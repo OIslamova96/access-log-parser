@@ -1,10 +1,6 @@
-package com.example.accesslogparser;
-
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
-import java.io.IOException;
 
 class LineTooLongException extends RuntimeException {
     public LineTooLongException(String message) {
@@ -15,64 +11,76 @@ class LineTooLongException extends RuntimeException {
 public class AccessLogParser {
 
     public static void main(String[] args) {
-
+        String path = "access.log";
         File logFile = new File(path);
-        if (!logFile.exists()) {
-            System.err.println("Ошибка: Файл не найден по пути: " + path);
-            return;
-        }
-        if (!logFile.isFile()) {
-            System.err.println("Ошибка: Указанный путь не является файлом: " + path);
+
+        if (!logFile.exists() || !logFile.isFile()) {
+            System.err.println("Файл не найден: " + path);
             return;
         }
 
-        int totalLines = 0;
-        int maxLength = 0;
-        int minLength = Integer.MAX_VALUE;
+        int totalRequests = 0;
+        int googleBotCount = 0;
+        int yandexBotCount = 0;
 
         try (FileReader fileReader = new FileReader(logFile);
              BufferedReader reader = new BufferedReader(fileReader)) {
 
             String line;
             while ((line = reader.readLine()) != null) {
-                totalLines++;
+                int length = line.length();
 
-                int currentLength = line.length();
-
-                if (currentLength > 1024) {
-                    throw new LineTooLongException("Обнаружена строка длиной " + currentLength +
-                            " символов, что превышает допустимый лимит в 1024 символа. Строка: '" +
-                            line.substring(0, Math.min(line.length(), 50)) + "...'");
+                if (length > 1024) {
+                    throw new LineTooLongException("Строка превышает 1024 символа");
                 }
 
-                if (currentLength > maxLength) {
-                    maxLength = currentLength;
-                }
-                if (currentLength < minLength) {
-                    minLength = currentLength;
+                totalRequests++;
+
+                int lastQuoteIndex = line.lastIndexOf("\"");
+                int secondLastQuoteIndex = line.lastIndexOf("\"", lastQuoteIndex - 1);
+
+                if (lastQuoteIndex != -1 && secondLastQuoteIndex != -1) {
+                    String userAgent = line.substring(secondLastQuoteIndex + 1, lastQuoteIndex);
+
+                    int openBracket = userAgent.indexOf("(");
+                    int closeBracket = userAgent.indexOf(")");
+
+                    if (openBracket != -1 && closeBracket > openBracket) {
+                        String firstBrackets = userAgent.substring(openBracket + 1, closeBracket);
+
+                        String[] parts = firstBrackets.split(";");
+                        if (parts.length >= 2) {
+                            String fragment = parts[1].trim();
+
+                            int slashIndex = fragment.indexOf("/");
+                            if (slashIndex != -1) {
+                                String botName = fragment.substring(0, slashIndex);
+
+                                if (botName.equals("Googlebot")) {
+                                    googleBotCount++;
+                                } else if (botName.equals("YandexBot")) {
+                                    yandexBotCount++;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            if (totalLines == 0) {
-                minLength = 0;
+            if (totalRequests > 0) {
+                double googleRatio = (double) googleBotCount / totalRequests;
+                double yandexRatio = (double) yandexBotCount / totalRequests;
+
+                System.out.println("Всего запросов: " + totalRequests);
+                System.out.println("Доля Googlebot: " + googleRatio);
+                System.out.println("Доля YandexBot: " + yandexRatio);
             }
 
-            System.out.println("Общее количество строк в файле: " + totalLines);
-            System.out.println("Длина самой длинной строки в файле: " + maxLength);
-            System.out.println("Длина самой короткой строки в файле: " + minLength);
-
-        } catch (FileNotFoundException e) {
-            System.err.println("Ошибка: Файл не найден. " + e.getMessage());
-            e.printStackTrace();
-        } catch (IOException e) {
-            System.err.println("Ошибка при чтении файла: " + e.getMessage());
-            e.printStackTrace();
         } catch (LineTooLongException e) {
-            System.err.println("Ошибка обработки файла: " + e.getMessage());
+            System.err.println(e.getMessage());
+            throw e;
+        } catch (Exception e) {
             e.printStackTrace();
-        } catch (Exception ex) {
-            System.err.println("Произошла непредвиденная ошибка: " + ex.getMessage());
-            ex.printStackTrace();
         }
     }
 }
