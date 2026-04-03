@@ -1,0 +1,7 @@
+package com.example.accesslogparser;
+
+public class LineTooLongException extends RuntimeException {
+    public LineTooLongException(String message) {
+        super(message);
+    }
+}
